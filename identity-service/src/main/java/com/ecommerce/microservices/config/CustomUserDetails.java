@@ -12,8 +12,8 @@ import java.util.List;
 
 public class CustomUserDetails implements UserDetails {
 
-    private String username;
-    private String password;
+    private final String username;
+    private final String password;
 
     public CustomUserDetails(UserCredential userCredential) {
         this.username = userCredential.getUsername();
