@@ -38,3 +38,8 @@ eureka:
   instance:
     prefer-ip-address: on
     instance-id: ${spring.application.name}:${random.value}
+
+management:
+  tracing:
+    sampling:
+      probability: 1.0
