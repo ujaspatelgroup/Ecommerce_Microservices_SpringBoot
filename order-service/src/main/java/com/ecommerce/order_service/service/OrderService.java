@@ -3,11 +3,13 @@ package com.ecommerce.order_service.service;
 import com.ecommerce.order_service.dto.InventoryResponse;
 import com.ecommerce.order_service.dto.OrderLineItemsDto;
 import com.ecommerce.order_service.dto.OrderRequest;
+import com.ecommerce.order_service.event.OrderPlacedEvent;
 import com.ecommerce.order_service.model.Order;
 import com.ecommerce.order_service.model.OrderLineItems;
 import com.ecommerce.order_service.repository.OrderRepository;
 import io.netty.resolver.DefaultAddressResolverGroup;
 import lombok.RequiredArgsConstructor;
+import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.reactive.function.client.WebClient;
@@ -26,6 +28,7 @@ public class OrderService {
 
     private final OrderRepository orderRepository;
     private final WebClient.Builder webClientBuilder;
+    private final KafkaTemplate<String, OrderPlacedEvent> kafkaTemplate;
 
     public String placeOrder(OrderRequest orderRequest){
         Order order = new Order();
@@ -42,7 +45,7 @@ public class OrderService {
                 .map(OrderLineItems::getSkuCode)
                 .toList();
 
-        //Inventory inter service communication for checking stock
+        //Inventory inter-service communication for checking stock
         InventoryResponse[] inventoryResponseArray = webClientBuilder.build().get()
                 .uri("http://inventory-service/api/inventory", uriBuilder -> uriBuilder.queryParam("skuCode", skuCodes).build())
                 .retrieve()
@@ -51,11 +54,17 @@ public class OrderService {
 
         boolean allProductsInStock = Arrays.stream(inventoryResponseArray).allMatch(InventoryResponse::isInStock);
 
-        if(allProductsInStock){
-            orderRepository.save(order);
-            return "Order placed Successfully";
-        }else {
-            throw new IllegalArgumentException("Product is not in stock");
+        try {
+            if (allProductsInStock) {
+                orderRepository.save(order);
+                kafkaTemplate.send("notificationTopic", new OrderPlacedEvent(order.getOrderNumber()));
+                return "Order placed Successfully";
+            } else {
+                throw new IllegalArgumentException("Product is not in stock");
+            }
+        }
+        catch (Exception e) {
+            throw new IllegalArgumentException("something wrong" + e.getMessage());
         }
 
 
